@@ -15,6 +15,4 @@ Personal 1-file vimrc:
       be copy/pasted and used in isolation, 
       some may need 'helper' functions also copied)
 
-(online version of vim, would need to copy-past vimrc):
-https://github.com/programmerhat/vim-online-editor
-https://www.vimonlineeditor.com/
+
