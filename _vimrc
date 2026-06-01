@@ -2070,17 +2070,280 @@ fu! MyOpenRecentFile()
 	execute 'edit ' . l:tmp_old[l:gotchar]
 endfu
 
+"////////////////////////////////
+"////////////////////////////////
+" ----------------------------------------------------------------------------
+" :b: Calendar Menu Script:b: -( Vim 7.4 Compatible (Drop-in style)
+" ----------------------------------------------------------------------------
+"  made basically by grok+gemini (from translation from js version)
+let g:HtmTxt_cal_calender_delineator = "<CALENDER__ADD_ENTRIES_FROM_MENU_WHEN_CURSOR_BETWEEN_THESE_TAGS>\n"
+let g:HtmTxt_cal_entry_delineator = "___________"
+
+let g:HtmTxt_cal_month_numbers = ["January","February","March","April","May","June",
+            \ "July","August","September","October","November","December"]
+
+let g:HtmTxt_cal_item_date_catch = {}
+
+fu! HtmTxt_cal_get_weekday(year, month, day)
+    let l:m = a:month
+    let l:y = a:year
+    if l:m == 1 || l:m == 2
+        let l:m += 12
+        let l:y -= 1
+    endif
+    let l:k = a:day
+    let l:j = l:y / 100
+    let l:y = l:y % 100
+
+    let l:h = (l:k + ((13 * (l:m + 1)) / 5) + l:y + (l:y / 4) + (l:j / 4) + 5 * l:j) % 7
+
+    let l:days = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+    return l:days[l:h]
+endfu
+
+fu! HtmTxt_cal_trim(str)
+    return substitute(a:str, '^\s*\(.\{-}\)\s*$', '\1', '')
+endfu
+
+fu! HtmTxt_cal_get_words(str)
+    return split(a:str, '\v[^a-zA-Z0-9]+')
+endfu
+
+fu! HtmTxt_cal_get_curr_time_block()
+    let l:now = localtime()
+    let l:hour24 = str2nr(strftime("%H", l:now))
+    let l:hour = l:hour24 % 12
+    if l:hour == 0 | let l:hour = 12 | endif
+
+    let l:obj = {}
+    let l:obj.minute = str2nr(strftime("%M", l:now))
+    let l:obj.hour   = l:hour
+    let l:obj.AM_PM  = l:hour24 >= 12 ? "PM" : "AM"
+    let l:obj.weekday = strftime("%A", l:now)
+    let l:obj.day    = str2nr(strftime("%d", l:now))
+    let l:obj.month  = g:HtmTxt_cal_month_numbers[str2nr(strftime("%m", l:now))-1]
+    let l:obj.year   = str2nr(strftime("%Y", l:now))
+    return l:obj
+endfu
+
+fu! HtmTxt_cal_month_from_txt_or_number(m)
+    if a:m == '' | return '' | endif
+    if a:m =~ '^\d\+$'
+        let l:idx = str2nr(a:m) - 1
+        return (l:idx >= 0 && l:idx < 12) ? g:HtmTxt_cal_month_numbers[l:idx] : ''
+    endif
+    for l:month in g:HtmTxt_cal_month_numbers
+        if toupper(l:month[:len(a:m)-1]) == toupper(a:m)
+            return l:month
+        endif
+    endfor
+    return ''
+endfu
+
+fu! HtmTxt_cal_getItem_n_date(text_block)
+    if has_key(g:HtmTxt_cal_item_date_catch, a:text_block)
+        return g:HtmTxt_cal_item_date_catch[a:text_block]
+    endif
+
+    let l:parts = HtmTxt_cal_get_words(a:text_block)
+    if len(l:parts) < 6 | return {} | endif
+
+    let l:item = {}
+    let l:i = 0
+    while l:i + 4 < len(l:parts)
+        if l:parts[l:i] =~ '^\d\+$' && l:parts[l:i+1] =~ '^\d\+$' && toupper(l:parts[l:i+2]) =~ '^AM\|PM'
+            let l:item.hour   = str2nr(l:parts[l:i])
+            let l:item.minute = str2nr(l:parts[l:i+1])
+            let l:item.AM_PM  = toupper(l:parts[l:i+2])
+            let l:item.month  = l:parts[l:i+3]
+            let l:item.day    = str2nr(l:parts[l:i+4])
+            let l:item.year   = (l:i+5 < len(l:parts)) ? str2nr(l:parts[l:i+5]) : 0
+            break
+        endif
+        let l:i += 1
+    endwhile
+
+    if !has_key(l:item, "hour") | return {} | endif
+
+    let l:item.month_number = index(g:HtmTxt_cal_month_numbers, l:item.month)
+
+    " === FIX: Safe 12-hour to 24-hour normalization ===
+    if l:item.AM_PM ==# 'AM' && l:item.hour == 12
+        let l:item.hour = 0
+    elseif l:item.AM_PM ==# 'PM' && l:item.hour < 12
+        let l:item.hour += 12
+    endif
+
+    let g:HtmTxt_cal_item_date_catch[a:text_block] = l:item
+    return l:item
+endfu
+
+
+fu! HtmTxt_cal_compare_dates(a, b)
+    let l:oa = HtmTxt_cal_getItem_n_date(a:a)
+    let l:ob = HtmTxt_cal_getItem_n_date(a:b)
+    if empty(l:oa) || empty(l:ob) | return 0 | endif
+
+    if l:oa.year != l:ob.year | return l:oa.year > l:ob.year ? 1 : -1 | endif
+    if l:oa.month_number != l:ob.month_number | return l:oa.month_number > l:ob.month_number ? 1 : -1 | endif
+    if l:oa.day != l:ob.day | return l:oa.day > l:ob.day ? 1 : -1 | endif
+    if l:oa.AM_PM !=# l:ob.AM_PM | return l:oa.AM_PM ==# 'PM' ? 1 : -1 | endif
+    if l:oa.hour != l:ob.hour | return l:oa.hour > l:ob.hour ? 1 : -1 | endif
+    if l:oa.minute != l:ob.minute | return l:oa.minute > l:ob.minute ? 1 : -1 | endif
+    return 0
+endfu
+
+
+fu! HtmTxt_cal_genTxt_date(prev, p_min, p_hr, p_ampm, p_day, p_mon, p_yr)
+    let l:work = empty(a:prev) ? HtmTxt_cal_get_curr_time_block() : copy(a:prev)
+
+    let l:min  = a:p_min  != '' ? str2nr(a:p_min)  : l:work.minute
+    let l:hr   = a:p_hr   != '' ? str2nr(a:p_hr)   : l:work.hour
+    let l:ampm = a:p_ampm != '' ? toupper(a:p_ampm): l:work.AM_PM
+    let l:day  = a:p_day  != '' ? str2nr(a:p_day)  : l:work.day
+    let l:yr   = a:p_yr   != '' ? str2nr(a:p_yr)   : l:work.year
+
+    let l:month = a:p_mon != '' ? HtmTxt_cal_month_from_txt_or_number(a:p_mon) : l:work.month
+    if l:month == '' | let l:month = l:work.month | endif
+
+    " --- FIX 1: Turn internal 24-hour state safely back into 12-hour display format ---
+    if l:hr > 12
+        let l:hr -= 12
+        let l:ampm = "PM"
+    elseif l:hr == 0
+        let l:hr = 12
+        let l:ampm = "AM"
+    endif
+
+    let l:month_idx = index(g:HtmTxt_cal_month_numbers, l:month) + 1
+    let l:weekday = HtmTxt_cal_get_weekday(l:yr, l:month_idx, l:day)
+
+    let l:out = g:HtmTxt_cal_entry_delineator . " " . l:weekday . " "
+                \ . l:hr . ":" . printf("%02d", l:min) . " " . l:ampm
+                \ . " ----------" . l:month . " " . l:day . " ----------" . l:yr . " "
+
+    return l:out
+endfu
+
+
+fu! HtmTxt_cal_getPrevDate()
+    let l:full = join(getline(1, '$'), "\n")
+    let l:curpos = line('.') * 1000 + col('.')
+    let l:idx = strridx(l:full[0:l:curpos], g:HtmTxt_cal_entry_delineator)
+    if l:idx == -1 | return {} | endif
+    let l:chunk = strpart(l:full, l:idx, 160)
+    return HtmTxt_cal_getItem_n_date(l:chunk)
+endfu
+
+
+fu! HtmTxt_cal_menu()
+    let l:lines = getline(1, '$')
+    let l:full_text = join(l:lines, "\n")
+
+    let l:cal_delim = g:HtmTxt_cal_calender_delineator
+    let l:entry_delim = g:HtmTxt_cal_entry_delineator
+
+    let l:blocks = split(l:full_text, '\V' . escape(l:cal_delim, '\/'), 1)
+
+    " === Ensure proper 3 blocks (create if missing, matching JS structural tracking) ===
+    if len(l:blocks) != 3
+        let l:template = " :b: Calendar_1_per_file :b: \n" . l:cal_delim . "\n\n" . l:cal_delim
+        let l:full_text = l:full_text . (l:full_text == "" ? "" : "\n") . l:template
+        let l:blocks = split(l:full_text, '\V' . escape(l:cal_delim, '\/'), 1)
+        let l:tmpEntries = []
+    else
+        let l:cal_text = l:blocks[1]
+        let l:tmpEntries = split(l:cal_text, '\V' . escape(l:entry_delim, '\/'), 1)
+    endif
+
+    " === Get user input ===
+    let l:msg = "ENTER CALENDER ENTRY FORMAT (blank to cancel):\n"
+          \ . " (days/month::1:Jan31 2:Feb28(29 leap years) \n"
+          \ . " 3:Mar31 4:Apr30 5:May31 6:Jun30 7:July31 \n"
+          \ . " 8:Aug31 9:Sept30 10:Oct31 11:Nov30 12:Dec31 \n"
+          \ . " first 'n' is for NOW, else previous entry by cursor\n"
+          \ . " AUTO-FILLS MISSING ELEMENTS!!!\n"
+          \ . " EG: n 12:30 am jan 23 2026 -OR- 12 30 am 1 23 2026\n> "
+    
+    let l:input = input(l:msg)
+    if HtmTxt_cal_trim(l:input) == "" | return | endif
+
+    let l:prompts = HtmTxt_cal_get_words(l:input)
+    let l:use_now = 0
+    if len(l:prompts) > 0 && tolower(l:prompts[0]) ==# 'n'
+        let l:use_now = 1
+        call remove(l:prompts, 0)
+    endif
+
+    " Pad prompts array to mimic JS argument spreading safety
+    while len(l:prompts) < 6
+        call add(l:prompts, "")
+    endwhile
+
+    let l:prevDate = l:use_now ? {} : HtmTxt_cal_getPrevDate()
+    if empty(l:prevDate)
+        " Explicitly padding the 7 expected arguments to satisfy Vim 7.4 strict arity
+        let l:prevDate = HtmTxt_cal_getItem_n_date(HtmTxt_cal_genTxt_date({}, "", "", "", "", "", ""))
+    endif
+     
+
+    let l:tmpGenDate = HtmTxt_cal_genTxt_date(l:prevDate,
+                \ l:prompts[1], l:prompts[0], l:prompts[2],
+                \ l:prompts[4], l:prompts[3], l:prompts[5])
+
+    if empty(l:tmpGenDate)
+        echo "\nfailed to create date!"
+        return
+    endif
+
+    " Extract raw entry body without its delineator
+    let l:new_entry_split = split(l:tmpGenDate, '\V' . escape(l:entry_delim, '\/'), 1)
+    let l:new_entry_body = (len(l:new_entry_split) > 1 ? l:new_entry_split[1] : l:tmpGenDate)
+    
+    call add(l:tmpEntries, l:new_entry_body)
+
+    " === FIX: Clear old whitespaces while explicitly protecting layout formatting ===
+    let l:clean_entries = []
+    for l:entry in l:tmpEntries
+        let l:trimmed = substitute(l:entry, '^[\s\r\n]\+\|[\s\r\n]\+$', '', 'g')
+        if l:trimmed != ""
+            " Appending a single leading space preserves the clean "___________ Monday" look
+            call add(l:clean_entries, " " . l:trimmed . "\n\n\n")
+        endif
+    endfor
+
+    " Sort if multiple entries exist
+    if len(l:clean_entries) > 1
+        call sort(l:clean_entries, "HtmTxt_cal_compare_dates")
+    endif
+
+    " === Re-inject matching JS exact layout logic ===
+    let l:blocks[1] = l:entry_delim . join(l:clean_entries, l:entry_delim)
+    let l:reconstructed = join(l:blocks, l:cal_delim)
+
+    " Overwrite buffer safely (Vim 7.4 keepempty compatible)
+    %delete _
+    call setline(1, split(l:reconstructed, "\n", 1))
+
+    " === FIX: Generate a search target that perfectly matches the newly cleaned buffer text ===
+    let l:search_target = l:entry_delim . " " . substitute(l:new_entry_body, '^[\s\r\n]\+\|[\s\r\n]\+$', '', 'g')
+    call search(escape(l:search_target, '\/.*$^~[]'), 'w')
+    normal! j
+endfu
+
+
+
 let g:MyMenus_Main = "
 \<M> Spreadsheet/Tag Functs  ; g:MyMenus_Spreadsheet </M> 
 \<M> Bkmarks/FoldTxt/cheetsht; g:MyMenuBookmarks  </M> 
+\<M> Calendar(add/add entry) ;:call HtmTxt_cal_menu() </M>
 \<M> Files/Terminal          ; g:Menu_File_Sys </M> 
 \<M> Tools/Procedural Gen    ; g:MyMenus_SubOptimalTools  </M> 
 \<M> OpenRecent(exit updates);:call MyOpenRecentFile() </M> 
 \<M> Replace Wrd Under Cursor;:call MyReplaceUdrCrsr() </M>
 \<M> 
 \\n\r start lines with to run when press ENTER(SHIFT+ENTER ignores):
-\\n\r        ':'/'='       ('=' prints, similar to 'echo'),  
-\\n\r        ':+'/'=+'     (stays on line with ENTER) 
+\\n\r        ':'/'='/'=+'  ('='prints, like 'echo', \w '+'stays on line), 
 \\n\r        '=+Run()'/':call Run()'(runs ALL ':'/'=' starting lines)
 \\n\r        '=RunTag('TAG')'    (runs code btween #1 & 2 'TAG's in doc)
 \\n\r        ':w|so %'     (runs file as vimscript(USE IN VimTERMINAL))
