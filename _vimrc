@@ -2302,10 +2302,11 @@ fu! HtmTxt_cal_menu()
     
     call add(l:tmpEntries, l:new_entry_body)
 
-    " === FIX: Clear old whitespaces while explicitly protecting layout formatting ===
+   " === FIX: Clear old whitespaces while explicitly protecting layout formatting ===
     let l:clean_entries = []
     for l:entry in l:tmpEntries
-        let l:trimmed = substitute(l:entry, '^[\s\r\n]\+\|[\s\r\n]\+$', '', 'g')
+        " Use \_s to safely strip spaces, tabs, and newlines across lines
+        let l:trimmed = substitute(l:entry, '^\_s\+\|\_s\+$', '', 'g')
         if l:trimmed != ""
             " Appending a single leading space preserves the clean "___________ Monday" look
             call add(l:clean_entries, " " . l:trimmed . "\n\n\n")
@@ -2326,11 +2327,10 @@ fu! HtmTxt_cal_menu()
     call setline(1, split(l:reconstructed, "\n", 1))
 
     " === FIX: Generate a search target that perfectly matches the newly cleaned buffer text ===
-    let l:search_target = l:entry_delim . " " . substitute(l:new_entry_body, '^[\s\r\n]\+\|[\s\r\n]\+$', '', 'g')
+    let l:search_target = l:entry_delim . " " . substitute(l:new_entry_body, '^\_s\+\|\_s\+$', '', 'g')
     call search(escape(l:search_target, '\/.*$^~[]'), 'w')
     normal! j
 endfu
-
 
 
 let g:MyMenus_Main = "
